@@ -1,0 +1,1146 @@
+// Action Bar description file :event_sequence_recorder_
+run("Action Bar","/plugins/ActionBar/Movie_Analyser_Toolbar_.txt");
+exit;
+
+<codeLibrary>
+
+// Update the Window displaying the experiment overview
+function updateExperimentOverview() {
+	name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "home/");
+	if (File.exists(dir+"experimentParameters.cfg")) {
+		settings = readSettings(dir+"experimentParameters.cfg");
+	}
+	else settings = newArray();
+	status = getSetting(settings, "status", "unprocessed");
+	notes = getSetting(settings, "notes", "empty");
+	dir = wrapText(dir,50,"/");
+	notes = wrapText(notes,50,"  ");
+	title1="Overview";
+	title2 = "["+title1+"]";
+	f = title2;
+	if (isOpen(title1))
+		print(f, "\\Update:"); // clears the window
+	else
+		run("Text Window...", "name="+title2+" width=52 height=13 menu");
+	print(f, "  Your name:\n"+name+"\n");
+	print(f, "  Experiment:\n"+dir+"\n");
+	print(f, "  Status:\n"+status+"\n");
+	print(f, "  Notes:\n"+notes);
+}
+
+function wrapText(string, width, ch) {
+	l = lengthOf(string);
+	words = split(string, ch);
+	line = "";
+	out = "";
+	last = 0;
+	i = 0;
+	while (i < words.length) {
+		if (line == "") {
+			line = line+words[i];
+			full = 0;
+		}
+		else {
+			oldline = line;
+			line = line+ch+words[i];
+			if (lengthOf(line) > width) {
+				line=oldline;
+				full = 1;
+			}
+			else full = 0;
+		}
+		if (full == 1) {
+			out = out+"\n"+line+ch;
+			line = "";
+		}
+		else {
+			if (i == (words.length-1)) {
+				out = out+"\n"+line;
+			}
+			i++;
+		}
+	}
+	out = substring(out, 1, lengthOf(out));
+	return out;
+}
+
+function readSequence() {
+	dir = getInfo("image.directory");
+	file = getInfo("image.filename");
+	file = split(file, "..");
+	file = file[0];
+	file = "seq_"+file+".txt";
+	seq = File.openAsString(dir+File.separator+file);
+	seq = split(seq, "\n");
+	return seq;
+}
+function writeSequence(seq) {
+	dir = getInfo("image.directory");
+	file = getInfo("image.filename");
+	file = split(file, "..");
+	file = file[0];
+	file = "seq_"+file+".txt";
+	filepath = dir+File.separator+file;
+	if (File.exists(filepath)) f = File.delete(filepath);
+	f = File.open(filepath);
+	for (i=0; i<seq.length;i++) {
+		print(f, seq[i]);
+	}
+	f = File.close(f);
+}
+function arrayRemoveItem(array, index) {
+	if (index >= array.length || index < 0) exit("Index "+index+" out of bounds."); // out of bounds
+	else if (index == 0) out = Array.slice(array, 1, array.length); // first element
+	else if (index == array.length-1) out = Array.slice(array, 0, array.length-1); // last element
+	else {
+		start = Array.trim(array, index);
+		end = Array.slice(array, index+1, array.length);
+		out = Array.concat(start, end);
+	}
+	return out;
+}
+function arrayIndexOf(array, string) {
+	index = -1;
+	i = 0;
+	while (i<array.length) {
+		if (startsWith(array[i], string)) {
+			index = i;
+			i = array.length-1;
+		}
+		i++;
+	}
+	return index;
+}
+function arrayEquals(a1, a2) {
+	if (a1.length != a2.length) return false;
+	for (i=0;i<a1.length;i++) {
+		if (a1[i] != a2[i]) return false;
+	}
+	return true;
+}
+function arrayCollapse(a, s) {
+	i=0;
+	c="";
+	while(i<a.length) {
+		c=""+c+s+a[i];
+		i++;
+	}
+	c = substring(c, lengthOf(s), lengthOf(c));
+	return c;
+}
+function readSettings(filename) {
+	content = File.openAsString(filename);
+	lines=split(content,"\n");
+	if (lengthOf(lines) <=1) exit("Empty file.");
+	separators = newArray("\t", ",,", ";;"); // Add more separators here if you are desperate.
+	separator = 0;
+	for (s=0;s<separators.length;s++) {
+		l=0;
+		separatorValid = 1;
+		while (separatorValid == 1 && l<lines.length) {
+			args = split(lines[l],separators[s]);
+			if (args.length != 2) separatorValid = 0;
+			l++;
+		}
+		if (separatorValid == 1) separator = separators[s];
+	}
+	if (separator == 0) exit("Settings couldn't be read with either tab, comma or semicolon as field separator.");
+	settings = split(lines[0], separator);
+	i=1;
+	while (i < lines.length) {
+		args = split(lines[i], separator);
+		settings = Array.concat(settings, args);
+		i++;
+	}
+	return settings;
+}
+function writeSettings(filename, settings) {
+	if (settings.length%2 != 0) exit("Each setting must have exactly one name and value.");
+	if (File.exists(filename)) {
+		or = getBoolean("The file "+filename+" already exists. Do you want to overwrite it?", "Yes", "No");
+		if (!or) return 0;
+		else f = File.delete(filename);
+	}
+	file = File.open(filename);
+	lines = settings.length/2;
+	for (l=1;l<=lines;l++) {
+		line = settings[(l-1)*2]+"\t"+settings[1+(l-1)*2];
+		// print(line);
+		print(file, line);
+	}
+	File.close(file);
+	return 1;
+}
+function getSetting(settings, field, def) {
+	id = arrayIndexOf(settings, field);
+	if (id == -1) return def;
+	id = id+1;
+	if (id >= settings.length) return def;
+	val = settings[id];
+	return val;
+}
+function setSetting(settings, field, value) {
+	id = arrayIndexOf(settings, field);
+	if (id == -1) {
+		add = newArray(field, value);
+		settings = Array.concat(settings, add);
+		return settings;
+	}
+	id = id+1;
+	if (id >= settings.length) {
+		settings = Array.concat(settings, value);
+		return settings;
+	}
+	settings[id] = value;
+	return settings;
+}
+function getDateYMD() {
+	getDateAndTime(year, month, dayOfWeek, dayOfMonth, hour, minute, second, msec);
+	date = ""+year+"";
+	month = month+1;
+	if (month<10) date = date+"0";
+	date = date+month;
+	if (dayOfMonth<10) date = date+"0";
+	date = date+dayOfMonth;
+	return date;
+}
+function validateMovieFiles(files) {
+	i = 0;
+	while (i<files.length) { // remove non-image files from the list
+		if (!endsWith(files[i], ".nd2") && !endsWith(files[i], ".tif") && !endsWith(files[i], ".tiff")) {
+			files = arrayRemoveItem(files, i);
+		}
+		else i++;
+	}
+	files = Array.sort(files);
+	if (arrayIndexOf(files, "Point") == -1) return "e";
+	// Detect number of fields of view imaged
+	points = 0; // counter for points
+	i=0;p=-1;
+	while (i<files.length) { // Detect unique points form file-names
+		file = split(files[i], "PointSeq._"); // Split by pattern as generated by the Nikon point loop
+		p2 = parseInt(file[0]); // First element is the point number
+		if (p != p2) { // If the last file wasn't from the same point, count up
+			p = p2;
+			points++;
+		}
+		i++;
+	}
+	
+	// Exit if number of files can't be devided into an equal number of files per FOV
+	if (files.length%points != 0) return "e";
+	if (files.length == 0) return "e";
+	// Otherwise calculate number of channels per FOV
+	channels = files.length/points;
+	out = newArray(channels, points);
+	return out;
+}
+</codeLibrary>
+
+<startupAction>
+updateExperimentOverview();
+</startupAction>
+
+//// -------------------------------
+//// Block for Experiment parameters
+//// -------------------------------
+// Line for Name and Experiment
+// ----------------------------
+<text> 1. Set up for this session
+<line>
+<button> 1 line 1
+label=Change name
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	// get experiment folder
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "home/");
+	//create dialog
+	Dialog.create("Change name:");
+	// with dropdown of previously used names
+	if (File.exists(dir+"classification.csv")) {
+		classification = File.openAsString(dir+"classification.csv");
+		classification = split(classification, "\n");
+		classification = split(classification[0], " \t");
+		if (classification.length > 3) {
+			names = Array.slice(classification, 3, names.length);
+			while (i<names.length) {
+				if (length(names[i] < 2) arrayRemoveItem(names, i);
+				else i++;
+			}
+			Dialog.addChoice("Please select:", Array.concat(names, "enter new name"));
+			Dialog.addString("new name:", "MaxM");
+			Dialog.show();
+			name = Dialog.getChoice();
+			if (name == "enter new name") name = Dialog.getString();
+		}
+		else { // old classification file without names
+			Dialog.addString("new name:", "MaxM")
+			Dialog.show();
+			name = Dialog.getString();
+		}
+	}
+	// without previously used names
+	else {
+		Dialog.addString("new name:", "MaxM")
+		Dialog.show();
+		name = Dialog.getString();
+	}
+	call("ij.Prefs.set", "MovieAnalyser.Name", name);
+	updateExperimentOverview();
+</macro>
+</button>
+
+<button> 2 line 1
+label=Change experiment
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = getDirectory("Choose spooling folder ...");
+	//// Check whether folder is a valid spooling folder
+	// Get list of all raw image files
+	files = getFileList(dir);
+	valid = validateMovieFiles(files);
+	// Experiment settings file is present
+	if (arrayIndexOf(files, "experimentParameters.cfg") != -1) {
+		// read in settings
+		settings = readSettings(dir+"experimentParameters.cfg");
+		channels = getSetting(settings, "channels", 4);
+		points = getSetting(settings, "points", 5);
+		call("ij.Prefs.set", "MovieAnalyser.NChannels", channels);
+    	call("ij.Prefs.set", "MovieAnalyser.NPoints", points);
+		call("ij.Prefs.set", "MovieAnalyser.Experiment", dir);
+	}
+	// Valid set of raw movie files is present
+	else if (lengthOf(valid) != 1) {
+		call("ij.Prefs.set", "MovieAnalyser.Experiment", dir);
+		call("ij.Prefs.set", "MovieAnalyser.NChannels", valid[0]);
+    	call("ij.Prefs.set", "MovieAnalyser.NPoints", valid[1]);
+	}
+	// A folder with cropped images is present
+	else if (arrayIndexOf(files, "crops") != -1) {
+		Dialog.create("Enter dimensions ...");
+		Dialog.addNumber("Channels", 4);
+		Dialog.addNumber("FOVs", 8);
+		Dialog.show();
+		channels = Dialog.getNumber();
+		points = Dialog.getNumber();
+		call("ij.Prefs.set", "MovieAnalyser.NChannels", channels);
+    	call("ij.Prefs.set", "MovieAnalyser.NPoints", points);
+		call("ij.Prefs.set", "MovieAnalyser.Experiment", dir);
+	}
+	else exit("Selected folder is not a valid emperiment folder.");
+	if (!File.exists(dir+"log.txt")) {
+		file = File.open(dir+"log.txt");
+		print(file, "Date\tName\tAction\tDetails");
+		File.close(file);
+	}
+	updateExperimentOverview();
+</macro>
+</button>
+</line>
+
+// Line for Parameters and notes
+// -----------------------------
+<text> 2. Define your experiment
+
+<line>
+<button> 1 line 2
+label=Experiment parameters
+// ------------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "/home");
+	// read existent settings
+	if (File.exists(dir+"experimentParameters.cfg")) {
+		oldP = readSettings(dir+"experimentParameters.cfg");
+	}
+	// generate settings array with default values
+	else {
+		points = call("ij.Prefs.get", "MovieAnalyser.NPoints", 10);
+		channels = call("ij.Prefs.get", "MovieAnalyser.NChannels", 4);
+		oldP = newArray("status", "unprocessed", "notes", "empty");
+		// add channel colors an maxima
+		colors = newArray("Grays", "Green", "Red", "Blue", "Cyan", "Magenta", "Yellow");
+		for (i=1;i<=channels;i++) {
+			name = "ch_"+i;
+			val = colors[i-1];
+			add = newArray(name, val);
+			oldP = Array.concat(oldP, add);
+		}
+		maxima = newArray(0,10000,1500,3000,10000,10000,10000);
+		for (i=1;i<=channels;i++) {
+			name = "max_"+i;
+			val = maxima[i-1];
+			add = newArray(name, val);
+			oldP = Array.concat(oldP, add);
+		}
+		// add point sample matching
+		for (i=0;i<points;i++) {
+			name = "pt_"+i;
+			val = i+1;
+			add = newArray(name, val);
+			oldP = Array.concat(oldP, add);
+		}
+	}
+	// Generate Dialog with default values from oldP
+	Dialog.create("Define experiment parameters ...");
+	date = getDateYMD();
+	date = getSetting(oldP, "date", date);
+	Dialog.addNumber("Experiment date:", date, 0, 9, "yyyymmdd");
+	framerate = getSetting(oldP, "framerate", 180);
+	Dialog.addNumber("Frames were acquired every", framerate, 0, 5, "seconds");
+	offset = getSetting(oldP, "offset", 1200);
+	Dialog.addNumber("Treatment to first movie frame was", offset, 0, 7, "seconds");
+	Dialog.addMessage("Channel specifications for display:");
+	channels = getSetting(oldP, "channels", channels);
+	for (i=1;i<=channels;i++) {
+		lcol = "ch_"+i;
+		lmax = "max_"+i;
+		vcol = getSetting(oldP, lcol, "Green");
+		vmax = getSetting(oldP, lmax, "10000");
+		Dialog.addChoice(i+". Color:", newArray("Red", "Green", "Blue", "Cyan", "Magenta", "Yellow", "Grays"), vcol);
+		// Dialog.addToSameRow();
+		Dialog.addNumber("max intensitity:", vmax, 0, 7, "");
+	}
+	Dialog.addMessage("Matching of fields of view to sample numbers:");
+	points = getSetting(oldP, "points", points);
+	for(i=0;i<points;i++) {
+		name = "pt_"+i;
+		val = getSetting(oldP, name, "user");
+		Dialog.addNumber("Point "+i+":", val, 0, 3, "");
+	}
+	Dialog.show();
+	// Collect settings and save them
+	newP = Array.copy(oldP);
+	val = Dialog.getNumber();
+	newP = setSetting(newP, "date", val);
+	val = Dialog.getNumber();
+	newP = setSetting(newP, "framerate", val);
+	val = Dialog.getNumber();
+	newP = setSetting(newP, "offset", val);
+	for (i=1;i<=channels;i++) {
+		lcol = "ch_"+i;
+		lmax = "max_"+i;
+		val = Dialog.getChoice();
+		newP = setSetting(newP, lcol, val);
+		val = Dialog.getNumber();
+		newP = setSetting(newP, lmax, val);
+	}
+	for(i=0;i<points;i++) {
+		name = "pt_"+i;
+		val = Dialog.getNumber();
+		newP = setSetting(newP, name, val);
+	}
+	// If changes were made write the new settings
+	if (!arrayEquals(oldP,newP) || !File.exists(dir+"experimentParameters.cfg")) w = writeSettings(dir+"experimentParameters.cfg", newP);
+	else w = 0;
+	// Write log entry
+	if (w == 1 & File.exists(dir+"log.txt")) {
+		entry = getDateYMD();
+		name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+		entry = entry+"\t"+name+"\tchanged experiment parameters\t-";
+		File.append(entry, dir+"log.txt");
+	}
+</macro>
+</button>
+
+<button> 2 line 2
+label=Edit Status/Note
+// -------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "/home");
+	if (!File.exists(dir+"experimentParameters.cfg")) {
+		exit("Please define experiment parameters first.");
+	}
+	expP = readSettings(dir+"experimentParameters.cfg");
+	status = getSetting(expP, "status", "unprocessed");
+	notes = getSetting(expP, "notes", "edit note");
+	Dialog.create("Edit Status/Notes");
+	Dialog.addString("Status:", status, 40);
+	Dialog.addString("Notes:", notes, 60);
+	Dialog.show();
+	newstatus = Dialog.getString();
+	newnotes = Dialog.getString();
+	// if changes were made write settings, without asking again
+	if (status != newstatus || notes != newnotes) {
+		expP = setSetting(expP, "status", newstatus);
+		expP = setSetting(expP, "notes", newnotes);
+		f = File.delete(dir+"experimentParameters.cfg");
+		w = writeSettings(dir+"experimentParameters.cfg", expP);
+		// write log entry
+		if (w == 1 & File.exists(dir+"log.txt")) {
+			entry = getDateYMD();
+			name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+			entry = entry+"\t"+name+"\tchanged status/notes\t"+newstatus+"; "+newnotes;
+			File.append(entry, dir+"log.txt");
+		}
+		updateExperimentOverview();
+	}
+</macro>
+</button>
+</line>
+
+//// ---------------------------
+//// Block for analysis settings
+//// ---------------------------
+
+// Line for copying
+// ----------------
+<text> 3. Define or copy analysis settings
+
+<line>
+<button> 1 line 3
+label=Copy settings from ...
+// -----------------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	expdir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "/home");
+	dir = getDirectory("Select experiment to copy from ...");
+	if (File.exists(dir+"settings.cfg")) {
+		rep = getBoolean("Are you sure you want to replace your current settings with the ones from\n"+dir+"?");
+		if (rep) {
+			f = File.delete(expdir+"settings.cfg");
+			File.copy(dir+"settings.cfg", expdir+"settings.cfg");
+			if (File.exists(expdir+"log.txt")) {
+				entry = getDateYMD();
+				name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+				entry = entry+"\t"+name+"\tcopied analysis settings\tfrom "+dir;
+				File.append(entry, expdir+"log.txt");
+			}
+		}
+	}
+	else exit("No settings file found.");
+</macro>
+</button>
+
+<button> 2 line 3
+label=Set defaults
+// ---------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	// read in settings
+	if (File.exists(dir+"settings.cfg")) {
+		sets = readSettings(dir+"settings.cfg");
+	}
+	// generate defaults
+	else {
+		// Main Pipeline:
+		channels = call("ij.Prefs.get", "MovieAnalyser.NChannels", 4);
+		charchannelProcessing  = "";
+		for (i=0;i<channels;i++) charchannelProcessing=charchannelProcessing+",background subtraction";
+		charchannelProcessing = substring(charchannelProcessing,1,lengthOf(charchannelProcessing));
+		sets = newArray("MP.channelProcessing", charchannelProcessing);
+		sets = Array.concat(sets, newArray("MP.rbRadius", 80, "MP.bSavePreprocessing", true, "MP.bSaveMemory", true, "MP.bCorrectDrift", true));
+		sets = Array.concat(sets, newArray("MP.driftChannel", 1, "MP.bSegmentationMask", true, "MP.segmentationChannel", 1));
+		sets = Array.concat(sets, newArray("MP.segSigma", 2, "MP.segRadius", 25, "MP.bskipToCrops", true, "MP.bModifySegmentation", false));
+		sets = Array.concat(sets, newArray("MP.bCropMovies", true, "MP.assemblyChoice", "unbiased 10% each", "MP.bMixPoints", true));
+		// Montage Maker:
+		sets = Array.concat(sets, newArray("MM.coverage", "50+5-10", "MM.sorting", "frames", "MM.filter", "min-max", "MM.basis", "user"));
+		sets = Array.concat(sets, newArray("MM.posflags", "c", "MM.negflags", "d", "MM.rows", 3, "MM.columns", 5, "MM.cellnumber", "all"));
+	}
+	Dialog.create("Default settings ...");
+	Dialog.addChoice("Select set of defaults to adjust:", newArray("Processing pipeline", "Montage maker"));
+	Dialog.show();
+	set = Dialog.getChoice();
+	if (set == "Processing pipeline") {
+		// get settings
+		channels = call("ij.Prefs.get", "MovieAnalyser.NChannels", 4);
+		channels = parseInt(channels);
+		channelProcessing   = getSetting(sets, "MP.channelProcessing", "nothing,nothing,nothing,nothing");
+		channelProcessing   = split(channelProcessing, ",,");
+		while (channelProcessing.length < channels) {
+			channelProcessing = Array.concat(channelProcessing, channelProcessing[channelProcessing.length-1]);
+		}
+		rbRadius            = getSetting(sets, "MP.rbRadius", 80);
+		bSavePreprocessing  = getSetting(sets, "MP.bSavePreprocessing", true);
+		bSaveMemory         = getSetting(sets, "MP.bSaveMemory", true);
+		bCorrectDrift       = getSetting(sets, "MP.bCorrectDrift", true);
+		driftChannel        = getSetting(sets, "MP.driftChannel", 1);
+		bSegmentationMask   = getSetting(sets, "MP.bSegmentationMask", true);
+		segmentationChannel = getSetting(sets, "MP.segmentationChannel", 1);
+		bModifySegmentation = getSetting(sets, "MP.bModifySegmentation", false);
+		bCropMovies         = getSetting(sets, "MP.bCropMovies", true);
+		assemblyChoice      = getSetting(sets, "MP.assemblyChoice", "unbiased 10% each");
+		bMixPoints          = getSetting(sets, "MP.bMixPoints", true);
+		
+		// generate dialog
+		processingOpts = newArray("none", "reduce to 8-bit", "background subtraction", "load processing from file");
+		channelOpts = Array.getSequence(channels);
+		for(i=0;i<channelOpts.length;i++) channelOpts[i]=""+(i+1)+"";
+		assemblyOpts = newArray("none", "unbiased 10% each", "unbiased 50 each", "unbiased 100 each", "top 10% channel 1", "top 50 channel 1", "top 100 channel 1", "top 10% channel 2", "top 50 channel 2", "top 100 channel 2", "top 10% channel 3", "top 50 channel 3", "top 100 channel 3");
+		Dialog.create("Define default values for image processing dialog ...");
+		for(i=1;i<=channels;i++) {
+			Dialog.addChoice("Channel "+i+" processing:", processingOpts, channelProcessing[i-1]);
+		}
+		Dialog.addNumber("Rolling ball radius:", rbRadius);
+		Dialog.addCheckbox("Save preprocessing", bSavePreprocessing);
+		Dialog.addCheckbox("Save memory (will make it slower)", bSaveMemory);
+		Dialog.addCheckbox("Correct drift", bCorrectDrift);
+		Dialog.addChoice("Correct drift based on channel ", channelOpts, driftChannel);
+		Dialog.addCheckbox("Generate Segmentation mask", bSegmentationMask);
+		Dialog.addChoice("Segment based on channel ", channelOpts, segmentationChannel);
+		Dialog.addCheckbox("Allow user modification before cropping", bModifySegmentation);
+		Dialog.addCheckbox("Crop to single cell movies", bCropMovies);
+		Dialog.addChoice("Generate assemblies :", assemblyOpts, assemblyChoice);
+		Dialog.addCheckbox("Mix points during assembly generation", bMixPoints);
+		Dialog.show();
+		
+		// read out input
+		channelProcessing = newArray(channels);
+		for(i=0;i<channels;i++) {
+			channelProcessing[i] = Dialog.getChoice();
+		}
+		rbRadius = Dialog.getNumber();
+		bSavePreprocessing = Dialog.getCheckbox();
+		bSaveMemory = Dialog.getCheckbox();
+		bCorrectDrift = Dialog.getCheckbox();
+		driftChannel = Dialog.getChoice();
+		driftChannel = parseInt(driftChannel);
+		bSegmentationMask = Dialog.getCheckbox();
+		segmentationChannel = Dialog.getChoice();
+		segmentationChannel = parseInt(segmentationChannel);
+		bModifySegmentation = Dialog.getCheckbox();
+		bCropMovies = Dialog.getCheckbox();
+		assemblyChoice = Dialog.getChoice();
+		bMixPoints = Dialog.getCheckbox();
+		
+		// convert back to settings
+		newsets = Array.copy(sets);
+		charchannelProcessing  = "";
+		for (i=0;i<channels;i++) charchannelProcessing=charchannelProcessing+","+channelProcessing[i];
+		charchannelProcessing = substring(charchannelProcessing,1,lengthOf(charchannelProcessing));
+		newsets = setSetting(newsets, "MP.channelProcessing", charchannelProcessing);
+		newsets = setSetting(newsets, "MP.rbRadius", rbRadius);
+		newsets = setSetting(newsets, "MP.bSavePreprocessing", bSavePreprocessing);
+		newsets = setSetting(newsets, "MP.bSaveMemory", bSaveMemory);
+		newsets = setSetting(newsets, "MP.bCorrectDrift", bCorrectDrift);
+		newsets = setSetting(newsets, "MP.driftChannel", driftChannel);
+		newsets = setSetting(newsets, "MP.bSegmentationMask", bSegmentationMask);
+		newsets = setSetting(newsets, "MP.segmentationChannel", segmentationChannel);
+		newsets = setSetting(newsets, "MP.bModifySegmentation", bModifySegmentation);
+		newsets = setSetting(newsets, "MP.bCropMovies", bCropMovies);
+		newsets = setSetting(newsets, "MP.assemblyChoice", assemblyChoice);
+		newsets = setSetting(newsets, "MP.bMixPoints", bMixPoints);
+		// write settings file
+		if (!arrayEquals(sets, newsets)) {
+			w = writeSettings(dir+"settings.cfg", newsets);
+			if (w == 1 & File.exists(dir+"log.txt")) {
+				entry = getDateYMD();
+				name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+				entry = entry+"\t"+name+"\tchanged default settings\tfor processing pipeline";
+				File.append(entry, dir+"log.txt");
+			}
+		}
+	}
+	else if (set == "Montage maker") {
+		// get settings
+		coverage   = getSetting(sets, "MM.coverage", "50+5-10");
+		coverage   = split(coverage, "+-");
+		cframe     = parseInt(coverage[0]);
+		pframes    = parseInt(coverage[1]);
+		fframes    = parseInt(coverage[2]);
+		sorting    = getSetting(sets, "MM.sorting", "frames");
+		filter     = getSetting(sets, "MM.filter", "min-max");
+		basis      = getSetting(sets, "MM.basis", "user");
+		posflags   = getSetting(sets, "MM.posflags", "c");
+		negflags   = getSetting(sets, "MM.negflags", "d");
+		rows       = getSetting(sets, "MM.rows", 3);
+		columns    = getSetting(sets, "MM.columns", 5);
+		cellnumber = getSetting(sets, "MM.cellnumber", "all");
+		cellnumber = split(cellnumber, "-");
+		cell       = cellnumber[0];
+		if (cell == "all") number = 50;
+		else number = parseInt(cellnumber[1]);
+		
+		// generate dialog
+		Dialog.create("Define default values for montage making dialog ...");
+		Dialog.addNumber("Class-defining frame in full length movie:", cframe, 0, 2, "");
+		Dialog.addNumber("Mininum number of preceding frames:", pframes, 0, 2, "");
+		Dialog.addNumber("Mininum number of following frames:", fframes, 0, 2, "");
+		bclassification = File.exists(dir+"classification.csv");
+		if (bclassification) {
+			classification = File.openAsString(dir+"classification.csv");
+			classification = split(classification, "\n");
+			title = split(classification[0], "\t");
+			classchoice = Array.slice(title, 2, title.length);
+			Dialog.addChoice("Select based on classification set", classchoice, basis);
+		}
+		Dialog.addString("Only show cells classified as:", posflags);
+		Dialog.addString("Do not include cells classified as:", negflags);
+		sortingOptions = newArray("frames", "max_channel_1", "stringent_max_channel_2", "max_channel_2", "stringent_max_channel_3", "max_channel_3", "max_channel_4", "onset");
+		Dialog.addChoice("Sorting criterium", sortingOptions, sorting);
+		Dialog.addString("Filter by sorting criterium (##/min-##/max)", filter);
+		cellnumberChoices = newArray("all", "top", "bottom", "random");
+		Dialog.addChoice("Which cells whould be considered?", cellnumberChoices, cell);
+		Dialog.addString("If not all, then how many cells per point? (## or ##%)", number);
+		Dialog.addMessage("Montage dimensions:");
+		Dialog.addNumber("rows:", rows, 0, 2, "");
+		Dialog.addNumber("columns:", columns, 0, 2, "");
+		Dialog.show();
+		
+		// get input
+		cframe   = Dialog.getNumber();
+		pframes  = Dialog.getNumber();
+		fframes  = Dialog.getNumber();
+		if (pframes >= cframe) exit("Classification frame must be > minimum preceding frames");
+		coverage = ""+cframe+"+"+pframes+"-"+fframes;
+		if (bclassification) {
+			basis    = Dialog.getChoice();
+			basiscol = arrayIndexOf(title, basis);
+		}
+		posflags = Dialog.getString();
+		negflags = Dialog.getString();
+		sorting  = Dialog.getChoice();
+		filter   = Dialog.getString();
+		filter   = split(filter, "-");
+		if (filter.length != 2) exit("Invalid filter entered. If you don't want to filter enter 'min-max'.");
+		filter   = ""+filter[0]+"-"+filter[1];
+		cell     = Dialog.getChoice();
+		number   = Dialog.getString();
+		if (cell != "all") cellnumber = cell+"-"+number;
+		else cellnumber = cell;
+		rows     = Dialog.getNumber();
+		columns  = Dialog.getNumber();
+		
+		// convert back to settings
+		newsets = Array.copy(sets);
+		newsets = setSetting(newsets, "MM.coverage", coverage);
+		newsets = setSetting(newsets, "MM.sorting", sorting);
+		newsets = setSetting(newsets, "MM.filter", filter);
+		newsets = setSetting(newsets, "MM.basis", basis);
+		newsets = setSetting(newsets, "MM.posflags", posflags);
+		newsets = setSetting(newsets, "MM.negflags", negflags);
+		newsets = setSetting(newsets, "MM.rows", rows);
+		newsets = setSetting(newsets, "MM.columns", columns);
+		newsets = setSetting(newsets, "MM.cellnumber", cellnumber);
+		// write settings file
+		if (!arrayEquals(sets, newsets)) {
+			w = writeSettings(dir+"settings.cfg", newsets);
+			if (w == 1 & File.exists(dir+"log.txt")) {
+				entry = getDateYMD();
+				name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+				entry = entry+"\t"+name+"\tchanged default settings\tfor montage maker";
+				File.append(entry, dir+"log.txt");
+			}
+		}
+	}
+</macro>
+</button>
+
+<button> 2 line 4
+label=Advanced settings
+// --------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	// read in settings
+	if (File.exists(dir+"settings.cfg")) {
+		sets = readSettings(dir+"settings.cfg");
+	}
+	// generate defaults
+	else {
+		// Main Pipeline:
+		channels = call("ij.Prefs.get", "MovieAnalyser.NChannels", 4);
+		charchannelProcessing  = "";
+		for (i=0;i<channels;i++) charchannelProcessing=charchannelProcessing+",background subtraction";
+		charchannelProcessing = substring(charchannelProcessing,1,lengthOf(charchannelProcessing));
+		sets = newArray("MP.channelProcessing", charchannelProcessing);
+		sets = Array.concat(sets, newArray("MP.rbRadius", 80, "MP.bSavePreprocessing", true, "MP.bSaveMemory", true, "MP.bCorrectDrift", true));
+		sets = Array.concat(sets, newArray("MP.driftChannel", 1, "MP.bSegmentationMask", true, "MP.segmentationChannel", 1));
+		sets = Array.concat(sets, newArray("MP.segSigma", 2, "MP.segRadius", 25, "MP.bskipToCrops", true, "MP.bModifySegmentation", false));
+		sets = Array.concat(sets, newArray("MP.bCropMovies", true, "MP.assemblyChoice", "unbiased 10% each", "MP.bMixPoints", true));
+		// Montage Maker:
+		sets = Array.concat(sets, newArray("MM.coverage", "50+5-10", "MM.sorting", "frames", "MM.filter", "min-max", "MM.basis", "user"));
+		sets = Array.concat(sets, newArray("MM.posflags", "c", "MM.negflags", "d", "MM.rows", 3, "MM.columns", 5, "MM.cellnumber", "all"));
+	}
+	// get settings
+	segSigma            = getSetting(sets, "MP.segSigma", 2);
+	segRadius           = getSetting(sets, "MP.segRadius", 25);
+	
+	// generate dialog
+	Dialog.create("Change advanced settings ...");
+	Dialog.addMessage("Image Processing:");
+	Dialog.addNumber("Sigma for gaussian filter on the segmentation channel:", segSigma);
+	Dialog.addNumber("Radius for background subtraction on the segmentation channel:", segRadius);
+	Dialog.show();
+	
+	// read out input
+	segSigma = Dialog.getNumber();
+	segRadius = Dialog.getNumber();
+	
+	// convert back to settings
+	newsets = Array.copy(sets);
+	newsets = setSetting(newsets, "MP.segSigma", segSigma);
+	newsets = setSetting(newsets, "MP.segRadius", segRadius);
+	
+	// write settings file
+	if (!arrayEquals(sets, newsets)) {
+		w = writeSettings(dir+"settings.cfg", newsets);
+		if (w == 1 & File.exists(dir+"log.txt")) {
+			entry = getDateYMD();
+			name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+			entry = entry+"\t"+name+"\tchanged advanced settings\t-";
+			File.append(entry, dir+"log.txt");
+		}
+	}
+    
+</macro>
+</button>
+</line>
+
+//// ----------------
+//// Image Processing
+//// ----------------
+<text> 4. Process image data
+<line>
+<button> 1 line 4
+label=Run pipeline
+// ---------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	plugins = getDirectory("plugins");
+	// rerun
+	if (File.exists(dir+"parameters_imageprocessing.cfg")) {
+		runMacro(plugins+"Movie Analyser"+File.separator+"Main_Pipeline_.ijm", "parameters_imageprocessing.cfg");
+	}
+	// run with previously defined defaults
+	else if (File.exists(dir+"settings.cfg")) {
+		runMacro(plugins+"Movie Analyser"+File.separator+"Main_Pipeline_.ijm", "settings.cfg");
+	}
+	// run with defaults
+	else {
+		runMacro(plugins+"Movie Analyser"+File.separator+"Main_Pipeline_.ijm");
+	}
+	if (File.exists(dir+"log.txt")) {
+		entry = getDateYMD();
+		name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+		entry = entry+"\t"+name+"\tran image processing\tsee parameters_imageprocessing.cfg";
+		File.append(entry, dir+"log.txt");
+	}
+</macro>
+</button>
+<button> 2 line 4
+label=Quantify features
+// --------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	plugins = getDirectory("plugins");
+	cropdir = dir+"crops"+File.separator;
+	if (!File.exists(cropdir)) exit("Please generate crops first");
+	sortingOptions = newArray("max_channel_1", "stringent_max_channel_2", "max_channel_2", "stringent_max_channel_3", "max_channel_3", "max_channel_4");
+	Dialog.create("Select feature ...");
+	Dialog.addChoice("", sortingOptions);
+	Dialog.show();
+	feature = Dialog.getChoice();
+	pointdirs = getFileList(cropdir);
+	// remove files from list
+	i=0;
+	while (i<pointdirs.length) {
+		if (!File.isDirectory(cropdir+pointdirs[i])) {
+			pointdirs = arrayRemoveItem(pointdirs, i);
+		}
+		else i++;
+	}
+	// run Feature quantifier for all crop folders
+	for (i=0;i<pointdirs.length;i++) {
+		runMacro(plugins+"Movie Analyser"+File.separator+"Feature_Quantifier_.ijm", cropdir+pointdirs[i]+"\t"+feature);
+	}
+	if (File.exists(dir+"log.txt")) {
+		entry = getDateYMD();
+		name = call("ij.Prefs.get", "MovieAnalyser.Name", "user");
+		entry = entry+"\t"+name+"\tquantified feature\t"+feature;
+		File.append(entry, dir+"log.txt");
+	}
+</macro>
+</button>
+</line>
+
+
+//// -------------------
+//// Population analysis
+//// -------------------
+
+<text> 5. Population analysis
+<line>
+<button> 1 line 5
+label=Select cells
+// ---------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	plugins = getDirectory("plugins");
+	runMacro(plugins+"Movie Analyser"+File.separator+"Montage_Maker_.ijm", "settings.cfg");
+</macro>
+</button>
+<button> 2 line 5
+label=Classify cells
+// -----------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	plugins = getDirectory("plugins");
+	if (File.exists(dir+"assemblies/")) {
+		Dialog.create("Select cell montages ...");
+		folders = getFileList(dir+"assemblies");
+		i = 0;
+		while(i<folders.length) {
+			if (!File.isDirectory(dir+"assemblies"+File.separator+folders[i])) folders = arrayRemoveItem(folders, i);
+			else i++;
+		}
+		Dialog.addChoice("", folders);
+		Dialog.show();
+		folder = Dialog.getChoice();
+	}
+	else exit("Please select cells for montage generation first.");
+	runMacro(plugins+"Movie Analyser"+File.separator+"Classifier_.ijm", dir+"assemblies"+File.separator+folder);
+</macro>
+</button>
+</line>
+<line>
+<button> 1 line 6
+label=Compare classifications
+// --------------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	plugins = getDirectory("plugins");
+	if(!File.exists(dir+"classification.csv")) exit("Classify cells first.");
+	classification = File.openAsString(dir+"classification.csv");
+	classification = split(classification, "\n");
+	title = split(classification[0], "\t");
+	if (title.length < 4) exit("At least two different classification sets are required for this.");
+	classsets = Array.slice(title, 2, title.length);
+	// Generate Dialog
+	Dialog.create("Please select ...");
+	choices = newArray("Merge classification sets", "Generate consensus classification set", "Montage differences for classification");
+	Dialog.addChoice("", choices);
+	Dialog.addChoice("Set 1", classsets, classsets[0]);
+	Dialog.addChoice("Set 2", classsets, classsets[1]);
+	Dialog.addString("With regard to these flags (empty = only identity):", "");
+	Dialog.show();
+	// Get input
+	task = Dialog.getChoice();
+	if (task == "Generate consensus classification set") task = "consensus";
+	else if (task == "Merge classification sets") task = "merge";
+	else task = "differences";
+	set1 = Dialog.getChoice();
+	set2 = Dialog.getChoice();
+	if (set1 == set2) exit("Please select two different classification sets");
+	flags = Dialog.getString();
+	// Prepare for processing
+	cname = "C_"+set1+"_"+set2+"_"+flags; // name for classification
+	mname = "M_"+set1+"_"+set2+"_"+flags; // name for classification
+	dname = getDateYMD();
+	dname = dname+"_"+set1+"_"+set2+"_"+flags+"diff"; // name for difference assembly
+	set1 = arrayIndexOf(title, set1);
+	set2 = arrayIndexOf(title, set2);
+	// compare classifications
+	newset = newArray();
+	for (i=1;i<classification.length;i++) {
+		line = split(classification[i], "\t");
+		x = line[set1];
+		y = line[set2];
+		
+		if (x == " " && y == " ") o = " "; // both empty -> always stays empty
+		if (x != " " && y != " ") {        // both present -> consensus is calculated
+			if (flags == "") { // hard comparison
+				if (x == y) o = x;
+				else        o = "c";
+			}
+			else { // soft comparison
+				o = findConsensus(x,y,flags); // will return "c" if no consensus was found
+			}
+		}
+		else if (x != " ") { // only x present -> empty for difference or consensus, present value for merge
+			if (task == "merge" && flags != "") o = findConsensus(x,x,flags);
+			else if (task == "merge") o = x;
+			else o = " ";
+		}
+		else if (y != " ") { // only y present
+			if (task == "merge" && flags != "") o = findConsensus(y,y,flags);
+			else if (task == "merge") o = y;
+			else o = " ";
+		}
+		newset = Array.concat(newset, o);
+	}
+	// classification is now either " " if at elast one was missing (consensus/difference)
+	// "c" if there was no consensus between two values
+	// "c..." for actual consensus or unique classifications if merged
+	// Generate consensus classification
+	if (task == "consensus" || task == "merge") {
+		if (task == "consensus") classification[0] = classification[0]+"\t"+cname;
+		else if (task == "merge") classification[0] = classification[0]+"\t"+mname;
+		x=File.delete(dir+"classification.csv");
+		flagfile = File.open(dir+"classification.csv");
+		for (i=0;i<classification.length;i++) {
+			if (i>0) {
+				classification[i] = classification[i]+"\t"+newset[i-1];
+			}
+			print(flagfile, classification[i]);
+		}
+		File.close(flagfile);
+	}
+	else if (task == "differences") {
+		assemblydir = dir+"assemblies";
+		if (!File.exists(assemblydir)) File.makeDirectory(assemblydir);
+		diffdir = assemblydir+File.separator+dname;
+		if (!File.exists(diffdir)) File.makeDirectory(diffdir);
+		// Write sorting file
+		sorting = File.open(diffdir+File.separator+"sorting.txt");
+		for (i=1;i<classification.length;i++) {
+			if (newset[i-1] == "c") {
+				line = split(classification[i], "\t");
+				filename = line[0]+"\t"+line[1];
+				print(sorting, filename);
+			}
+		}
+		sorting = File.close(sorting);
+		runMacro(plugins+"Movie Analyser"+File.separator+"Montage_Maker_Diff_.ijm", "settings.cfg "+dname);
+	}	
+	
+	function findConsensus(a,b,f) {
+		// Generate array with flags to consider
+		flags = newArray();
+		for (i=0;i<lengthOf(f);i++) {
+			x = substring(f, i ,i+1);
+			flags = Array.concat(flags, x);
+		}
+		// Array with flags to consider in a
+		af = newArray();
+		for (i=0;i<lengthOf(a);i++) {
+			x = substring(a, i ,i+1);
+			if (arrayIndexOf(flags, x) != -1) af = Array.concat(af, x);
+		}
+		// Array with flags to consider in b
+		bf = newArray();
+		for (i=0;i<lengthOf(b);i++) {
+			x = substring(b, i ,i+1);
+			if (arrayIndexOf(flags, x) != -1) bf = Array.concat(bf, x);
+		}
+		// Check if same length
+		if (af.length != bf.length) return "c";
+		out = "c";
+		// Check if same elements
+		af = Array.sort(af);
+		bf = Array.sort(bf);
+		for (i=0;i<af.length;i++) {
+			if (af[i] != bf[i]) return "c";
+			out = out+af[i];
+		}
+		return out;
+	}
+</macro>
+</button>
+
+<button> 2 line 6
+label=Resolve differences
+// ----------------------
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "\home");
+	plugins = getDirectory("plugins");
+	if (File.exists(dir+"assemblies/")) {
+		Dialog.create("Select cell montages ...");
+		folders = getFileList(dir+"assemblies");
+		i = 0;
+		while(i<folders.length) {
+			if (!File.isDirectory(dir+"assemblies"+File.separator+folders[i])) folders = arrayRemoveItem(folders, i);
+			else if (!endsWith(folders[i], "diff/")) {
+				folders = arrayRemoveItem(folders, i);
+			}
+			else i++;
+		}
+		if (folders.length == 0) exit("Please montage differences first.");
+		Dialog.addChoice("", folders);
+		Dialog.show();
+		folder = Dialog.getChoice();
+	}
+	else exit("Please select cells for montage generation first.");
+	runMacro(plugins+"Movie Analyser"+File.separator+"Classifier_.ijm", dir+"assemblies"+File.separator+folder);
+	
+</macro>
+</button>
+</line>
+
+//// ----------------------------
+//// Log / Overview / Help Button
+//// ----------------------------
+<text>
+<line>
+<button>
+label=Experiment Log
+icon=noicon
+bgcolor=#F0F0FF
+arg=<macro>
+	dir = call("ij.Prefs.get", "MovieAnalyser.Experiment", "/home");
+	if (!File.exists(dir+"log.txt")) exit("No log file found.");
+	logdata = File.openAsString(dir+"log.txt");
+	logdata = split(logdata, "\n");
+	title1="Experiment Log";
+	title2 = "["+title1+"]";
+	f = title2;
+	if (isOpen(title1))
+		print(f, "\\Update:"); // clears the window
+	else
+		run("Table...", "name="+title2+" width=600 height=500");
+	print(f, "\\Headings:"+logdata[0]);
+	for (i=1;i<logdata.length;i++) print(f, logdata[i]);
+</macro>
+</button>
+<button>
+label=Session overview
+icon=noicon
+bgcolor=#FEFEFE
+arg=<macro>
+	updateExperimentOverview();
+</macro>
+</button>
+<button>
+label=I'm lost!
+icon=noicon
+bgcolor=#FFF0F0
+arg=<macro>
+	Dialog.create("Get Help");
+	Dialog.addMessage("Thank you for using my tool.\nIf you are lost, check the status and log of the experiment.\nThe general workflow is from top to bottom.\nSince can not ruin your analysis through this toolbox just try out different things.");
+	Dialog.addMessage("If you still don't know what to do,\ncheck out the github repository at (to be added) or leave an issue there.");
+	Dialog.show();
+	topic = Dialog.getChoice();
+	format = Dialog.getChoice();
+</macro>
+</button>
+</line>
+
+
+
+Show experiment log
+
+Run preprocessing
+
+Generate montages
+
+Define classes
+
+Classify cells
+
+Quantify classifications
+
+Compare classifications
+
+Select Cells for kinetic Analysis
